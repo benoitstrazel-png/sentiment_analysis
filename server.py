@@ -179,6 +179,29 @@ class SentilyticsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error_response(str(e), 500)
             return
 
+        if self.path == '/api/progress':
+            progress_file = "data/processed/progress.json"
+            if os.path.exists(progress_file):
+                try:
+                    with open(progress_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    self.send_json_response(data)
+                except Exception as e:
+                    self.send_json_response({
+                        "status": "idle",
+                        "stage": "idle",
+                        "percent": 0,
+                        "message": f"Erreur de lecture : {str(e)}"
+                    })
+            else:
+                self.send_json_response({
+                    "status": "idle",
+                    "stage": "idle",
+                    "percent": 0,
+                    "message": "Aucun scraping en cours."
+                })
+            return
+
         # 2. Handle standard static files serving
         if self.path == '/' or self.path == '/index.html':
             self.path = '/dashboard/index.html'
@@ -189,10 +212,15 @@ class SentilyticsRequestHandler(http.server.SimpleHTTPRequestHandler):
             
         return super().do_GET()
 
+from socketserver import ThreadingMixIn
+
+class ThreadingHTTPServer(ThreadingMixIn, http.server.HTTPServer):
+    daemon_threads = True
+
 def run(port=8000):
     server_address = ('', port)
-    httpd = http.server.HTTPServer(server_address, SentilyticsRequestHandler)
-    print(f"\n🚀 Serveur local Sentilytics en cours d'exécution sur http://localhost:{port}/")
+    httpd = ThreadingHTTPServer(server_address, SentilyticsRequestHandler)
+    print(f"\n🚀 Serveur local Sentilytics (Multi-threaded) en cours d'exécution sur http://localhost:{port}/")
     print("Double-cliquez sur 'start.command' pour ouvrir l'application automatiquement.")
     try:
         httpd.serve_forever()

@@ -478,6 +478,115 @@ function populateTable(reviews) {
     });
 }
 
+let progressInterval = null;
+
+function startScrapingProgressTracker(productName) {
+    const modal = document.getElementById('scrape-progress-modal');
+    const titleEl = document.getElementById('progress-product-title');
+    const badgeEl = document.getElementById('progress-stage-badge');
+    const barEl = document.getElementById('progress-bar-fill');
+    const msgEl = document.getElementById('progress-text-msg');
+    const pctEl = document.getElementById('progress-percentage-label');
+    
+    const stepExtraction = document.getElementById('step-extraction');
+    const stepTranslation = document.getElementById('step-translation');
+    const iconExtraction = document.getElementById('icon-extraction');
+    const iconTranslation = document.getElementById('icon-translation');
+    
+    if (!modal) return;
+    
+    // Reset and show modal
+    titleEl.textContent = productName || "Produit Samsung";
+    badgeEl.textContent = "Initialisation";
+    barEl.style.width = "0%";
+    pctEl.textContent = "0%";
+    msgEl.textContent = "Démarrage de la tâche de scraping...";
+    
+    stepExtraction.className = "stage-step";
+    stepTranslation.className = "stage-step";
+    iconExtraction.textContent = "⏳";
+    iconTranslation.textContent = "⏳";
+    
+    modal.style.display = 'flex';
+    
+    // Setup close button
+    const closeBtn = document.getElementById('close-progress-modal-btn');
+    if (closeBtn) {
+        closeBtn.onclick = () => {
+            modal.style.display = 'none';
+        };
+    }
+    
+    if (progressInterval) clearInterval(progressInterval);
+    
+    progressInterval = setInterval(async () => {
+        try {
+            const res = await fetch('/api/progress');
+            if (!res.ok) return;
+            const data = await res.json();
+            
+            if (data.status === 'running') {
+                if (data.stage === 'extraction') {
+                    badgeEl.textContent = "Extraction";
+                    badgeEl.style.background = "rgba(59, 130, 246, 0.15)";
+                    badgeEl.style.color = "var(--primary-color)";
+                    badgeEl.style.borderColor = "rgba(59, 130, 246, 0.3)";
+                    
+                    stepExtraction.className = "stage-step active";
+                    iconExtraction.textContent = "⚡";
+                    stepTranslation.className = "stage-step";
+                    iconTranslation.textContent = "⏳";
+                } else if (data.stage === 'translation') {
+                    badgeEl.textContent = "Traduction & Analyse";
+                    badgeEl.style.background = "rgba(245, 158, 11, 0.15)";
+                    badgeEl.style.color = "#f59e0b";
+                    badgeEl.style.borderColor = "rgba(245, 158, 11, 0.3)";
+                    
+                    stepExtraction.className = "stage-step done";
+                    iconExtraction.textContent = "✅";
+                    stepTranslation.className = "stage-step active";
+                    iconTranslation.textContent = "⚡";
+                }
+                
+                barEl.style.width = `${data.percent}%`;
+                pctEl.textContent = `${data.percent}%`;
+                msgEl.textContent = data.message;
+            } else if (data.stage === 'completed' || data.status === 'completed') {
+                clearInterval(progressInterval);
+                badgeEl.textContent = "Terminé";
+                badgeEl.style.background = "rgba(16, 185, 129, 0.15)";
+                badgeEl.style.color = "var(--positive-color)";
+                badgeEl.style.borderColor = "rgba(16, 185, 129, 0.3)";
+                
+                barEl.style.width = "100%";
+                pctEl.textContent = "100%";
+                msgEl.textContent = "Traitement terminé avec succès ! Rechargement du dashboard...";
+                
+                stepExtraction.className = "stage-step done";
+                iconExtraction.textContent = "✅";
+                stepTranslation.className = "stage-step done";
+                iconTranslation.textContent = "✅";
+                
+                // Show modal if it was hidden
+                modal.style.display = 'flex';
+                
+                setTimeout(async () => {
+                    modal.style.display = 'none';
+                    await loadProducts();
+                    const productSelect = document.getElementById('product-select');
+                    if (productSelect && productSelect.options.length > 1) {
+                        // Pick latest
+                        productSelect.selectedIndex = productSelect.options.length - 1;
+                        loadProductData(productSelect.value);
+                    }
+                }, 3000);
+            }
+        } catch (err) {
+            console.error("Error fetching progress:", err);
+        }
+    }, 1000);
+}
+
 // 4. Mini Sidebar Scraper (URL direct)
 function initUrlScraper() {
     const form = document.getElementById('scraper-form');
@@ -500,6 +609,9 @@ function initUrlScraper() {
         status.className = 'status-msg info';
         status.textContent = "Scraping...";
 
+        // Start progress tracker overlay immediately!
+        startScrapingProgressTracker("Extraction directe depuis l'URL...");
+
         try {
             const response = await fetch('/api/scrape', {
                 method: 'POST',
@@ -521,10 +633,14 @@ function initUrlScraper() {
             } else {
                 status.className = 'status-msg error';
                 status.textContent = "Erreur.";
+                const modal = document.getElementById('scrape-progress-modal');
+                if (modal) modal.style.display = 'none';
             }
         } catch (err) {
             status.className = 'status-msg error';
             status.textContent = "Erreur réseau.";
+            const modal = document.getElementById('scrape-progress-modal');
+            if (modal) modal.style.display = 'none';
         } finally {
             btn.disabled = false;
             btnText.textContent = "Scraper";
@@ -751,6 +867,9 @@ async function scrapeCardProduct(card, productId, productName, limit) {
 
     const statusText = overlay.querySelector('.card-status-text');
 
+    // Trigger the real-time progress tracker overlay modal
+    startScrapingProgressTracker(productName);
+
     try {
         const response = await fetch('/api/scrape', {
             method: 'POST',
@@ -774,6 +893,8 @@ async function scrapeCardProduct(card, productId, productName, limit) {
                 <div class="card-status-text" style="color: var(--negative-color);">Échec : ${result.message || 'Erreur'}</div>
             `;
             setTimeout(() => overlay.remove(), 4000);
+            const modal = document.getElementById('scrape-progress-modal');
+            if (modal) modal.style.display = 'none';
         }
     } catch (err) {
         overlay.innerHTML = `
@@ -781,6 +902,8 @@ async function scrapeCardProduct(card, productId, productName, limit) {
             <div class="card-status-text" style="color: var(--negative-color);">Erreur réseau</div>
         `;
         setTimeout(() => overlay.remove(), 4000);
+        const modal = document.getElementById('scrape-progress-modal');
+        if (modal) modal.style.display = 'none';
     }
 }
 

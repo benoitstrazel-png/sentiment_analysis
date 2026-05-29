@@ -258,6 +258,27 @@ class SamsungScraper:
             print(f"[!] Erreur lors de l'analyse : {e}")
             return None, None
 
+    def update_progress(self, stage, current, total, message):
+        """
+        Helper to write the current scraping progress to a JSON file.
+        """
+        progress_file = "data/processed/progress.json"
+        os.makedirs(os.path.dirname(progress_file), exist_ok=True)
+        percent = int((current / total) * 100) if total > 0 else 0
+        data = {
+            "status": "running",
+            "stage": stage,
+            "current": current,
+            "total": total,
+            "percent": percent,
+            "message": message
+        }
+        try:
+            with open(progress_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+        except Exception as e:
+            print(f"[Progress Error] {e}")
+
     def fetch_reviews(self, product_id, product_name, limit=100):
         """
         Fetch reviews using the Bazaarvoice API and translate non-French ones.
@@ -266,12 +287,18 @@ class SamsungScraper:
         
         api_url = f"https://apps.bazaarvoice.com/bfd/v1/clients/{self.bv_client}/api-products/cv2/resources/data/reviews.json"
         
-        processed_reviews = []
+        raw_reviews = []
         offset = 0
         batch_size = 50 # Max page size supported by the API
         
-        while len(processed_reviews) < limit:
-            current_limit = min(batch_size, limit - len(processed_reviews))
+        self.update_progress("extraction", 0, limit, "Initialisation de l'extraction...")
+        
+        # STAGE 1: Extraction (fetching raw reviews from Bazaarvoice)
+        print("[*] ÉTAPE 1 : Extraction des avis bruts...")
+        total_results_limit = limit
+        
+        while len(raw_reviews) < limit:
+            current_limit = min(batch_size, limit - len(raw_reviews))
             
             params = {
                 "resource": "reviews",
@@ -307,52 +334,25 @@ class SamsungScraper:
                 results = data.get("response", {}).get("Results", [])
                 total_results = data.get("response", {}).get("TotalResults", 0)
                 
+                # Adjust limits based on actual total reviews available
+                actual_max = min(limit, total_results)
+                total_results_limit = actual_max if actual_max > 0 else limit
+                
                 if not results:
                     print("[*] Plus aucun avis disponible.")
                     break
                 
                 print(f"[ ] Reçu {len(results)} avis (Offset: {offset} / Total sur Samsung: {total_results})")
+                raw_reviews.extend(results)
                 
-                for rev in results:
-                    raw_text = rev.get("ReviewText", "")
-                    rating = rev.get("Rating", 3)
-                    
-                    # Convert SubmissionTime format to YYYY-MM-DD
-                    raw_date = rev.get("SubmissionTime", "")
-                    date_match = re.search(r'^(\d{4}-\d{2}-\d{2})', raw_date)
-                    date_str = date_match.group(1) if date_match else "2026-01-01"
-                    
-                    # 1. Handle Language Translation
-                    content_locale = rev.get("ContentLocale", "fr_FR")
-                    lang_code = content_locale.split("_")[0].lower()
-                    
-                    translated_text = raw_text
-                    
-                    # If review is not originally in French, translate it!
-                    if lang_code != "fr" and raw_text:
-                        translated_text = self.translate_text(raw_text)
-                    
-                    # 2. Deduce category
-                    category = self.analyzer.get_product_category(product_name)
-                    
-                    # 3. Analyze Sentiment & Aspects (on the translated French text!)
-                    sentiment = self.analyzer.analyze(translated_text, rating)
-                    aspects = self.analyzer.analyze_aspects(translated_text, rating, category)
-                    
-                    # Follow strict contract schema (enriched with translation fields)
-                    review_item = {
-                        "product_id": product_id,
-                        "product_name": product_name,
-                        "rating": rating,
-                        "date": date_str,
-                        "original_text": raw_text,
-                        "original_language": lang_code,
-                        "review_text": translated_text,
-                        "sentiment": sentiment,
-                        "aspects": aspects
-                    }
-                    processed_reviews.append(review_item)
-                    
+                # Update progress for extraction stage
+                self.update_progress(
+                    "extraction", 
+                    len(raw_reviews), 
+                    total_results_limit, 
+                    f"Extraction des avis bruts : {len(raw_reviews)} / {total_results_limit}"
+                )
+                
                 # Increment offset
                 offset += len(results)
                 
@@ -363,6 +363,59 @@ class SamsungScraper:
                 print(f"[!] Erreur de requête API : {e}")
                 break
                 
+        total_extracted = len(raw_reviews)
+        print(f"[+] Extraction terminée. {total_extracted} avis récupérés.")
+        
+        # STAGE 2: Translation & Analysis
+        print("[*] ÉTAPE 2 : Traduction et analyse de sentiment...")
+        processed_reviews = []
+        
+        for idx, rev in enumerate(raw_reviews):
+            current_index = idx + 1
+            progress_msg = f"Traduction & Analyse de l'avis {current_index} sur {total_extracted}..."
+            self.update_progress("translation", current_index, total_extracted, progress_msg)
+            
+            raw_text = rev.get("ReviewText", "")
+            rating = rev.get("Rating", 3)
+            
+            # Convert SubmissionTime format to YYYY-MM-DD
+            raw_date = rev.get("SubmissionTime", "")
+            date_match = re.search(r'^(\d{4}-\d{2}-\d{2})', raw_date)
+            date_str = date_match.group(1) if date_match else "2026-01-01"
+            
+            # 1. Handle Language Translation
+            content_locale = rev.get("ContentLocale", "fr_FR")
+            lang_code = content_locale.split("_")[0].lower()
+            
+            translated_text = raw_text
+            
+            # If review is not originally in French, translate it!
+            if lang_code != "fr" and raw_text:
+                translated_text = self.translate_text(raw_text)
+            
+            # 2. Deduce category
+            category = self.analyzer.get_product_category(product_name)
+            
+            # 3. Analyze Sentiment & Aspects (on the translated French text!)
+            sentiment = self.analyzer.analyze(translated_text, rating)
+            aspects = self.analyzer.analyze_aspects(translated_text, rating, category)
+            
+            # Follow strict contract schema (enriched with translation fields)
+            review_item = {
+                "product_id": product_id,
+                "product_name": product_name,
+                "rating": rating,
+                "date": date_str,
+                "original_text": raw_text,
+                "original_language": lang_code,
+                "review_text": translated_text,
+                "sentiment": sentiment,
+                "aspects": aspects
+            }
+            processed_reviews.append(review_item)
+            
+        # Complete
+        self.update_progress("completed", total_extracted, total_extracted, f"Traitement de {total_extracted} avis terminé avec succès !")
         print(f"[+] Total de {len(processed_reviews)} avis traités avec succès.")
         return processed_reviews
 

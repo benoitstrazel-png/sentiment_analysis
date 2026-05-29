@@ -482,11 +482,54 @@
                                 </ul>
                             </div>
                         </div>
-                    </div>
                 </section>
             </div>
         </main>
     </div>
+
+    <!-- Global Progress Modal for Scraping -->
+    <div id="scrape-progress-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content glass-panel fade-in">
+            <div class="progress-header">
+                <div class="progress-logo">
+                    <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" style="width: 24px; height: 24px;">
+                        <rect width="32" height="32" rx="8" fill="#1428A0"/>
+                        <path d="M16 8v16M8 16h16" stroke="white" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                    <h3>Progression du Scraping</h3>
+                </div>
+                <span class="progress-stage-badge" id="progress-stage-badge">Initialisation</span>
+            </div>
+            
+            <p class="progress-product-title" id="progress-product-title">Nom du produit...</p>
+            
+            <div class="progress-bar-container">
+                <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%;"></div>
+            </div>
+            
+            <div class="progress-stats">
+                <span class="progress-text-msg" id="progress-text-msg">Préparation de l'environnement de scraping...</span>
+                <span class="progress-percentage-label" id="progress-percentage-label">0%</span>
+            </div>
+
+            <div class="progress-stage-steps">
+                <div class="stage-step" id="step-extraction">
+                    <span class="step-icon" id="icon-extraction">⏳</span>
+                    <span class="step-label">Étape 1 : Extraction depuis Samsung (Bazaarvoice)</span>
+                </div>
+                <div class="stage-step" id="step-translation">
+                    <span class="step-icon" id="icon-translation">⏳</span>
+                    <span class="step-label">Étape 2 : Traduction & Analyse de Sentiments (Gemini)</span>
+                </div>
+            </div>
+            
+            <div class="progress-note">
+                💡 Le scraping s'exécute en tâche de fond sur le serveur. Vous pouvez fermer cette fenêtre, le tableau de bord se rechargera automatiquement dès la fin de l'opération !
+            </div>
+            <button id="close-progress-modal-btn" class="glass-select-compact" style="margin-top: 10px; width: 100%; border-color: rgba(255,255,255,0.15); padding: 12px; font-weight: 600; cursor: pointer; color: #fff;">Fermer et laisser tourner en tâche de fond</button>
+        </div>
+    </div>
+
     <script src="app.js"></script>
 </body>
 </html>

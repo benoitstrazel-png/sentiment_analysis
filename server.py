@@ -74,7 +74,7 @@ class SentilyticsRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_error_response(f"Erreur interne : {str(e)}", 500)
         elif self.path == '/api/clear':
             try:
-                processed_dir = "data/processed"
+                processed_dir = os.path.join("data", "processed")
                 if os.path.exists(processed_dir):
                     for f in os.listdir(processed_dir):
                         file_path = os.path.join(processed_dir, f)
@@ -180,7 +180,7 @@ class SentilyticsRequestHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         if self.path == '/api/progress':
-            progress_file = "data/processed/progress.json"
+            progress_file = os.path.join("data", "processed", "progress.json")
             if os.path.exists(progress_file):
                 try:
                     with open(progress_file, "r", encoding="utf-8") as f:

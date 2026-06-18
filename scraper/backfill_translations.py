@@ -77,7 +77,7 @@ def backfill():
                         r["sentiment"] = analyzer.analyze(translated, r.get("rating", 3))
                         # Deduce category to update aspects
                         cat = analyzer.get_product_category(r.get("product_name", ""))
-                        r["aspects"] = analyzer.analyze_aspects(translated, r.get("rating", 3), cat)
+                        r["aspects"], r["aspect_scores"] = analyzer.analyze_aspects(translated, r.get("rating", 3), cat)
                         
                         translated_count += 1
                         modified = True

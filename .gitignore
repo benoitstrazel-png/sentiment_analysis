@@ -47,3 +47,13 @@ data/processed/*
 *.njsproj
 *.sln
 *.swp
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+

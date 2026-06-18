@@ -97,10 +97,10 @@ def backfill_file(file_path):
                 r["review_text"] = review_text
                 
         # Re-evaluate aspects on the (translated or original French) review_text
-        if "aspects" not in r or not isinstance(r["aspects"], dict) or not r["aspects"]:
+        if "aspects" not in r or not isinstance(r["aspects"], dict) or not r["aspects"] or "aspect_scores" not in r:
             text_to_analyze = r.get("review_text", "")
             rating = r.get("rating", 5)
-            r["aspects"] = analyzer.analyze_aspects(text_to_analyze, rating, category)
+            r["aspects"], r["aspect_scores"] = analyzer.analyze_aspects(text_to_analyze, rating, category)
             modified_count += 1
             
     # Save back
@@ -144,7 +144,7 @@ if __name__ == "__main__":
         processed_dir = "data/processed"
         if os.path.exists(processed_dir):
             for file_name in os.listdir(processed_dir):
-                if file_name.endswith(".json") and file_name != "products.json":
+                if file_name.endswith(".json") and file_name not in ["products.json", "translation_cache.json", "progress.json"]:
                     file_path = os.path.join(processed_dir, file_name)
                     backfill_file(file_path)
 

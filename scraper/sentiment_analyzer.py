@@ -174,17 +174,117 @@ class SentimentAnalyzer:
                 return "negative"
             return "neutral"
 
+    def calculate_sentence_score(self, sentence_text, global_rating):
+        sentence_lower = sentence_text.lower()
+        words = re.findall(r'\b\w+\b', sentence_lower)
+        if not words:
+            return float(global_rating)
+            
+        strong_positives = {
+            "excellent", "parfait", "génial", "géniale", "magnifique", "superbe", 
+            "incroyable", "recommande", "meilleur", "meilleure", "adore", "adoré", "top",
+            "parfaite", "parfaits", "extraordinaire", "merveux", "réussi"
+        }
+        strong_negatives = {
+            "mauvais", "nul", "nulle", "horrible", "pire", "déçu", "déçue", "décevant", 
+            "décevante", "regrette", "panne", "casse", "inutile", "terrible", "catastrophe"
+        }
+        
+        pos_words = self.french_positive.union(self.english_positive)
+        neg_words = self.french_negative.union(self.english_negative)
+        
+        # Add some highly relevant aspect words to the lexicons if they are missing
+        pos_words.update(["silencieux", "silencieuse", "silence", "grand", "grande", "propre", "propres", "intuitif", "interactive", "confortable", "confortables", "solide", "solides", "robuste", "robustes", "pratique", "pratiques", "esthétique", "beau", "belle", "rapide", "rapides"])
+        neg_words.update(["bruyant", "bruyante", "bruyants", "bruyantes", "vibration", "vibrations", "petit", "petite", "petits", "petites", "lent", "lente", "lents", "lentes", "compliqué", "compliquée", "difficile", "difficiles", "cher", "chère", "chers", "chères", "fragile", "fragiles"])
+        
+        intensifiers = {
+            "très", "tres", "extrêmement", "extremement", "vraiment", "super", 
+            "hyper", "trop", "plus", "beaucoup", "particulièrement", "particulierement",
+            "extrémement", "tellement", "fortement"
+        }
+        negations = {
+            "pas", "non", "aucun", "aucune", "jamais", "rien", "ne", "ni", "sans", "guerre"
+        }
+        
+        word_weights = []
+        has_pos = False
+        has_neg = False
+        
+        for idx, w in enumerate(words):
+            is_pos = w in pos_words
+            is_neg = w in neg_words
+            
+            if not is_pos and not is_neg:
+                continue
+                
+            # Look at context (up to 2 words before)
+            is_negated = False
+            is_intensified = False
+            
+            for j in range(max(0, idx - 2), idx):
+                prev_word = words[j]
+                if prev_word in negations:
+                    is_negated = True
+                if prev_word in intensifiers:
+                    is_intensified = True
+                    
+            # Base value
+            val = 1.0
+            if w in strong_positives or w in strong_negatives:
+                val = 1.5
+                
+            if is_pos:
+                if is_negated:
+                    word_weights.append(-val * 1.2)
+                    has_neg = True
+                else:
+                    word_weights.append(val * (1.5 if is_intensified else 1.0))
+                    has_pos = True
+            elif is_neg:
+                if is_negated:
+                    word_weights.append(val * 0.8) # e.g. "pas déçu" -> positive
+                    has_pos = True
+                else:
+                    word_weights.append(-val * (1.5 if is_intensified else 1.0))
+                    has_neg = True
+                    
+        if not word_weights:
+            return float(global_rating)
+            
+        total_weight = sum(word_weights)
+        
+        # Convert weight to 1.0 - 5.0 score
+        if total_weight > 0:
+            # Positive sentiment
+            if not has_neg and any(w in strong_positives for w in words):
+                score = 5.0
+            else:
+                score = 3.0 + min(2.0, total_weight)
+        elif total_weight < 0:
+            # Negative sentiment
+            if not has_pos and any(w in strong_negatives for w in words):
+                score = 1.0
+            else:
+                score = 3.0 - min(2.0, abs(total_weight))
+        else:
+            score = 3.0
+            
+        # Ensure bounds
+        score = max(1.0, min(5.0, score))
+        return round(score, 1)
+
     def analyze_aspects(self, text, rating, category):
         """
         Aspect-Based Sentiment Analysis (ABSA).
         Splits review text into sentences, maps them to product aspects,
-        and scores the aspect-specific sentiment.
+        and scores the aspect-specific sentiment and numerical rating.
         """
         if not text:
-            return {}
+            return {}, {}
 
         aspects_config = self.ASPECTS_MAP.get(category, self.ASPECTS_MAP["default"])
         results = {}
+        scores = {}
 
         # Split review into sentences/clauses
         sentences = re.split(r'[.,;!\n\r]+', text)
@@ -202,8 +302,10 @@ class SentimentAnalyzer:
                 if any(re.search(r'\b' + re.escape(kw) + r'\b', sentence_lower) for kw in keywords):
                     # Analyze the sentiment of this specific clause
                     sentiment = self.analyze_sentence_sentiment(sentence_clean, rating)
+                    score = self.calculate_sentence_score(sentence_clean, rating)
                     # Store result (last mentioned takes precedence or positive/negative overwrite neutral)
                     if aspect_name not in results or results[aspect_name] == "neutral":
                         results[aspect_name] = sentiment
+                        scores[aspect_name] = score
                         
-        return results
+        return results, scores

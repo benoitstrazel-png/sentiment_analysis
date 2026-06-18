@@ -27,10 +27,10 @@ class SamsungScraper:
         
         # Ensure directories exist
         os.makedirs("data/raw", exist_ok=True)
-        os.makedirs("data/processed", exist_ok=True)
+        os.makedirs(os.path.join("data", "processed"), exist_ok=True)
         
         # Load translation cache if present to speed up operations and avoid redundant API requests
-        self.cache_path = "data/processed/translation_cache.json"
+        self.cache_path = os.path.join("data", "processed", "translation_cache.json")
         self.translation_cache = {}
         if os.path.exists(self.cache_path):
             try:
@@ -262,7 +262,7 @@ class SamsungScraper:
         """
         Helper to write the current scraping progress to a JSON file.
         """
-        progress_file = "data/processed/progress.json"
+        progress_file = os.path.join("data", "processed", "progress.json")
         os.makedirs(os.path.dirname(progress_file), exist_ok=True)
         percent = int((current / total) * 100) if total > 0 else 0
         data = {
@@ -398,7 +398,7 @@ class SamsungScraper:
             
             # 3. Analyze Sentiment & Aspects (on the translated French text!)
             sentiment = self.analyzer.analyze(translated_text, rating)
-            aspects = self.analyzer.analyze_aspects(translated_text, rating, category)
+            aspects, aspect_scores = self.analyzer.analyze_aspects(translated_text, rating, category)
             
             # Follow strict contract schema (enriched with translation fields)
             review_item = {
@@ -410,7 +410,8 @@ class SamsungScraper:
                 "original_language": lang_code,
                 "review_text": translated_text,
                 "sentiment": sentiment,
-                "aspects": aspects
+                "aspects": aspects,
+                "aspect_scores": aspect_scores
             }
             processed_reviews.append(review_item)
             
@@ -427,7 +428,7 @@ class SamsungScraper:
             print("[!] Aucun avis à sauvegarder.")
             return
             
-        file_path = f"data/processed/{product_id}.json"
+        file_path = os.path.join("data", "processed", f"{product_id}.json")
         
         # Save individual product reviews
         with open(file_path, "w", encoding="utf-8") as f:
@@ -447,7 +448,7 @@ class SamsungScraper:
         avg_rating = round(avg_rating, 2)
         
         # Update products.json catalog
-        catalog_path = "data/processed/products.json"
+        catalog_path = os.path.join("data", "processed", "products.json")
         catalog = []
         
         if os.path.exists(catalog_path):

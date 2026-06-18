@@ -439,7 +439,16 @@ function updateChart(reviews) {
                 },
                 x: {
                     grid: { display: false },
-                    ticks: { color: '#8B9BB4' }
+                    ticks: {
+                        color: '#8B9BB4',
+                        maxTicksLimit: 8,
+                        maxRotation: 45,
+                        minRotation: 0,
+                        callback: function(value, index, ticks) {
+                            const d = new Date(this.getLabelForValue(value));
+                            return isNaN(d) ? this.getLabelForValue(value) : d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+                        }
+                    }
                 }
             }
         }
@@ -953,14 +962,23 @@ function updateAspects(reviews) {
     
     reviews.forEach(r => {
         const aspects = r.aspects || {};
-        const rating = r.rating || 5;
+        const aspectScores = r.aspect_scores || {};
         Object.entries(aspects).forEach(([aspect, sentiment]) => {
             if (!stats[aspect]) {
                 stats[aspect] = { positive: 0, negative: 0, neutral: 0, total: 0, ratingSum: 0 };
             }
             stats[aspect][sentiment]++;
             stats[aspect].total++;
-            stats[aspect].ratingSum += rating;
+            
+            let score;
+            if (aspectScores[aspect] !== undefined) {
+                score = aspectScores[aspect];
+            } else {
+                if (sentiment === "positive") score = 5.0;
+                else if (sentiment === "negative") score = 1.0;
+                else score = 3.0;
+            }
+            stats[aspect].ratingSum += score;
         });
     });
 
@@ -1218,14 +1236,23 @@ function updateAISynthesis(reviews) {
     const stats = {};
     reviews.forEach(r => {
         const aspects = r.aspects || {};
-        const rating = r.rating || 5;
+        const aspectScores = r.aspect_scores || {};
         Object.entries(aspects).forEach(([aspect, sentiment]) => {
             if (!stats[aspect]) {
                 stats[aspect] = { positive: 0, negative: 0, neutral: 0, total: 0, ratingSum: 0 };
             }
             stats[aspect][sentiment]++;
             stats[aspect].total++;
-            stats[aspect].ratingSum += rating;
+            
+            let score;
+            if (aspectScores[aspect] !== undefined) {
+                score = aspectScores[aspect];
+            } else {
+                if (sentiment === "positive") score = 5.0;
+                else if (sentiment === "negative") score = 1.0;
+                else score = 3.0;
+            }
+            stats[aspect].ratingSum += score;
         });
     });
     
@@ -1504,7 +1531,17 @@ function updateThemesView(reviews) {
         
         // Calculate theme average rating and count
         const total = themeReviews.length;
-        const ratingSum = themeReviews.reduce((sum, r) => sum + (r.rating || 5), 0);
+        const ratingSum = themeReviews.reduce((sum, r) => {
+            let score;
+            if (r.aspect_scores && r.aspect_scores[aspectName] !== undefined) {
+                score = r.aspect_scores[aspectName];
+            } else {
+                if (r.aspects[aspectName] === "positive") score = 5.0;
+                else if (r.aspects[aspectName] === "negative") score = 1.0;
+                else score = 3.0;
+            }
+            return sum + score;
+        }, 0);
         const avg = total > 0 ? (ratingSum / total).toFixed(1) : "0.0";
         
         ratingBadge.innerHTML = `⭐ ${avg} / 5`;
@@ -1778,7 +1815,7 @@ function resetCategoryView() {
     document.getElementById('cat-models-count').innerText = "0";
     
     document.getElementById('cat-table-header').innerHTML = '';
-    document.getElementById('cat-table-body').innerHTML = '<tr><td colspan="100%" style="text-align: center; color: var(--text-secondary); padding: 40px;">Aucune catégorie sélectionnée ou aucune donnée disponible.</td></tr>';
+    document.getElementById('cat-table-body').innerHTML = '<tr><td colspan="100%" style="text-align: center; color: var(--text-secondary); padding: 40px;">👆 Commencez par sélectionner une catégorie et une sous-catégorie en haut pour afficher la comparaison.</td></tr>';
     
     if (categoryChartInstance) {
         categoryChartInstance.destroy();
@@ -2032,8 +2069,19 @@ function renderCategoryData(selectedLang) {
                 
                 const aspReviews = prodReviews.filter(r => r.aspects && r.aspects[asp] !== undefined);
                 if (aspReviews.length > 0) {
-                    const aspAvg = aspReviews.reduce((sum, r) => sum + r.rating, 0) / aspReviews.length;
-                    const cls = aspAvg >= 4.2 ? "high" : (aspAvg >= 3.5 ? "mid" : "low");
+                    const aspectScoresSum = aspReviews.reduce((sum, r) => {
+                        let score;
+                        if (r.aspect_scores && r.aspect_scores[asp] !== undefined) {
+                            score = r.aspect_scores[asp];
+                        } else {
+                            if (r.aspects[asp] === "positive") score = 5.0;
+                            else if (r.aspects[asp] === "negative") score = 1.0;
+                            else score = 3.0;
+                        }
+                        return sum + score;
+                    }, 0);
+                    const aspAvg = aspectScoresSum / aspReviews.length;
+                    const cls = aspAvg >= 4.0 ? "high" : (aspAvg >= 3.0 ? "mid" : "low");
                     tdAsp.innerHTML = `<span class="score-badge ${cls}">⭐ ${aspAvg.toFixed(1)}</span>`;
                 } else {
                     tdAsp.innerHTML = `<span class="score-badge none">-</span>`;
@@ -2163,7 +2211,18 @@ function updateCategoryAISynthesis(filteredReviews, bestProduct, bestRating, asp
     aspects.forEach(asp => {
         const aspReviews = filteredReviews.filter(r => r.aspects && r.aspects[asp] !== undefined);
         if (aspReviews.length > 0) {
-            const avg = aspReviews.reduce((sum, r) => sum + r.rating, 0) / aspReviews.length;
+            const aspectScoresSum = aspReviews.reduce((sum, r) => {
+                let score;
+                if (r.aspect_scores && r.aspect_scores[asp] !== undefined) {
+                    score = r.aspect_scores[asp];
+                } else {
+                    if (r.aspects[asp] === "positive") score = 5.0;
+                    else if (r.aspects[asp] === "negative") score = 1.0;
+                    else score = 3.0;
+                }
+                return sum + score;
+            }, 0);
+            const avg = aspectScoresSum / aspReviews.length;
             const pos = aspReviews.filter(r => r.aspects[asp] === 'positive').length;
             const neg = aspReviews.filter(r => r.aspects[asp] === 'negative').length;
             const posRate = (pos / aspReviews.length) * 100;
